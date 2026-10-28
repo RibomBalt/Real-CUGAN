@@ -1,0 +1,24 @@
+[project]
+name = "real-cugan"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "moviepy>=2.2.1",
+    "numpy>=2.5.4",
+    "opencv-python>=5.0.0.93",
+    "torch>=2.14.1",
+]
+
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true

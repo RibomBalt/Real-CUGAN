@@ -1,6 +1,7 @@
 [project]
 name = "real-cugan"
 version = "0.1.0"
+description = "Real-CUGAN: anime image/video upscaling and denoising (2x/3x/4x)"
 requires-python = ">=3.13"
 dependencies = [
     "moviepy>=2.2.1",
@@ -9,6 +10,30 @@ dependencies = [
     "torch>=2.14.1",
 ]
 
+[project.scripts]
+real-cugan-image = "real_cugan.upcunet_v3:main"
+real-cugan-video = "real_cugan.inference_video:main"
+
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["real_cugan*"]
+
+[tool.ruff]
+target-version = "py313"
+# VapourSynth/ 是上游贡献的独立脚本，colab-demo.ipynb 是演示笔记本，均不纳入本项目代码风格
+extend-exclude = ["VapourSynth", "colab-demo.ipynb"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "UP", "BLE", "RUF"]
+# 中文文档与提示信息中的全角标点是刻意为之
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+# 模型部分刻意与官方 upcunet_v3.py 保持一致，不按新风格改写，以保证与上游 diff 最小
+[tool.ruff.lint.per-file-ignores]
+"real_cugan/upcunet_v3.py" = ["E701", "E712", "UP004", "UP008", "UP031", "RUF059"]
 
 [tool.uv.sources]
 torch = [

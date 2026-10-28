@@ -75,8 +75,27 @@ Modify config.py, and double click go.bat to execute Real-CUGAN.
 :white_check_mark:  **opencv-python**     <br>
 :white_check_mark:  **moviepy**           <br>
 
-upcunet_v3.py: model file and image inference script <br>
-inference_video.py: a simple script for inferencing anime videos using Real-CUGAN.
+This project is packaged for `uv`, which installs two commands:
+```bash
+# install package + dependencies
+uv sync
+
+# images: a single file or a whole directory, 2x/3x/4x
+uv run real-cugan-image <image-or-dir> -o <out-dir> -s 2 -n denoise3x -t 5 -c 1 -a 1
+
+# videos: one worker set per GPU, keep the original audio track
+uv run real-cugan-video -i input.mp4 -o output.mp4 -s 2 --nt 2 --n-gpu 1
+
+uv run real-cugan-image --help
+uv run real-cugan-video --help
+```
+Flags map to the parameters documented below: `-s/--scale`, `-n/--denoise`, `-t/--tile`,
+`-c/--cache-mode`, `-a/--alpha`, `--half/--no-half`, `-d/--device`. Weights are picked from
+`weights_v3/` by scale + denoise preset unless `-w/--weights` is given.
+
+Code layout: `real_cugan/upcunet_v3.py` (model + image CLI) and
+`real_cugan/inference_video.py` (video CLI); both expose a `main()` registered through
+`[project.scripts]` in `pyproject.toml`.
 
 ### 4. For VapourSynth users
 

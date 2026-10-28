@@ -98,8 +98,29 @@ https://github.com/bilibili/ailab/assets/61866546/79b6061e-e46f-4789-95a8-5a1286
 :white_check_mark:  **numpy**             <br>
 :white_check_mark:  **opencv-python**     <br>
 :white_check_mark:  **moviepy**           <br>
-upcunet_v3.py:模型+图像推理包 <br>
-inference_video.py:一个简单的使用Real-CUGAN推理视频的脚本
+
+本项目已改为可通过 `uv` 安装的 Python 包，安装后在环境内提供两个命令：<br>
+```bash
+# 安装（依赖与包本体一起装好）
+uv sync
+
+# 图像：单张图片或整个目录，2x/3x/4x
+uv run real-cugan-image 输入图片或目录 -o 输出目录 -s 2 -n denoise3x -t 5 -c 1 -a 1
+
+# 视频：按 --n-gpu 分配显卡，每卡 --nt 线程，保留原音轨
+uv run real-cugan-video -i 输入.mp4 -o 输出.mp4 -s 2 --nt 2 --n-gpu 1
+
+# 查看全部参数
+uv run real-cugan-image --help
+uv run real-cugan-video --help
+```
+参数含义与下文“参数说明”一致：`-s/--scale` 倍率、`-n/--denoise` 降噪档位、`-t/--tile` 分块、
+`-c/--cache-mode` 显存/速度模式、`-a/--alpha` 处理强度、`--half/--no-half` 半精度、`-d/--device` 设备。
+权重默认从 `weights_v3/` 按倍率与降噪档位自动匹配，也可用 `-w/--weights` 直接指定。
+
+代码结构：`real_cugan/upcunet_v3.py`（模型定义 + 图像推理 CLI）、
+`real_cugan/inference_video.py`（视频推理 CLI），两个入口函数均为 `main()`，由 `pyproject.toml` 的
+`[project.scripts]` 注册。
 
 ### 4. VapourSynth玩家
 移步[Readme](VapourSynth/README.md)

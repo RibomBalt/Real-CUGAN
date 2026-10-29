@@ -24,7 +24,14 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .cli import add_model_args, output_stem
+from .cli import (
+    add_config_arg,
+    add_model_args,
+    model_overrides,
+    output_stem,
+    section_overrides,
+)
+from .config import ConfigError, load_settings
 from .image_io import imread_rgb, imwrite_rgb, list_images, unique_path
 from .paths import resolve_weight_path, scale_from_weight_name
 
@@ -1324,40 +1331,56 @@ class RealWaifuUpScaler(object):
 # fmt: on
 # --------------------------------------------------------------------------
 # CLI
-# --------------------------------------------------------------------------
+
+
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="real-cugan-image",
         description="Real-CUGAN 图像超分/降噪：对单张图片或目录下所有图片做 2x/3x/4x 放大",
     )
+    add_config_arg(parser)
     parser.add_argument(
         "input",
         nargs="?",
-        default="inputs",
-        help="输入图像文件或目录（默认当前目录下的 inputs/）",
+        default=None,
+        help="输入图像文件或目录（默认取配置文件的 image.input）",
     )
     parser.add_argument(
         "-o",
         "--output-dir",
-        default="output",
-        help="输出目录，不存在会自动创建（默认 output/）",
+        default=None,
+        help="输出目录，不存在会自动创建（默认取配置文件的 image.output_dir）",
     )
     add_model_args(parser)
     return parser
+
+
+def _cli_overrides(args: argparse.Namespace) -> dict:
+    overrides = model_overrides(args)
+    overrides.update(section_overrides(args, "image", ("input", "output_dir")))
+    return overrides
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_argparser().parse_args(argv)
 
     try:
-        weight_path = resolve_weight_path(args.weights, args.scale, args.denoise)
+        settings = load_settings(args.config, _cli_overrides(args))
+    except ConfigError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+
+    try:
+        weight_path = resolve_weight_path(
+            settings.weights, settings.scale, settings.denoise
+        )
     except (FileNotFoundError, ValueError) as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 2
 
-    scale = scale_from_weight_name(weight_path) or args.scale
-    half = args.half and args.device.startswith("cuda")
-    if args.device.startswith("cuda") and not torch.cuda.is_available():
+    scale = scale_from_weight_name(weight_path) or settings.scale
+    half = settings.half and settings.device.startswith("cuda")
+    if settings.device.startswith("cuda") and not torch.cuda.is_available():
         print(
             "错误：未检测到可用的 CUDA。请检查显卡驱动/torch 安装，或改用 --device cpu",
             file=sys.stderr,
@@ -1365,21 +1388,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
-        inputs = list_images(args.input)
+        inputs = list_images(settings.image.input)
     except FileNotFoundError as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 2
     if not inputs:
-        print(f"错误：{args.input} 下没有找到图像文件", file=sys.stderr)
+        print(f"错误：{settings.image.input} 下没有找到图像文件", file=sys.stderr)
         return 2
 
     print(
-        f"权重: {weight_path}\n设备: {args.device}  半精度: {half}  "
-        f"tile: {args.tile}  cache_mode: {args.cache_mode}  alpha: {args.alpha:g}"
+        f"权重: {weight_path}\n设备: {settings.device}  半精度: {half}  "
+        f"tile: {settings.tile}  cache_mode: {settings.cache_mode}  alpha: {settings.alpha:g}"
     )
-    upscaler = RealWaifuUpScaler(scale, str(weight_path), half=half, device=args.device)
+    upscaler = RealWaifuUpScaler(
+        scale, str(weight_path), half=half, device=settings.device
+    )
 
-    output_dir = Path(args.output_dir)
+    output_dir = Path(settings.image.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     failed = 0
@@ -1390,9 +1415,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             frame = imread_rgb(src_path)
             result = upscaler(
                 frame,
-                tile_mode=args.tile,
-                cache_mode=args.cache_mode,
-                alpha=args.alpha,
+                tile_mode=settings.tile,
+                cache_mode=settings.cache_mode,
+                alpha=settings.alpha,
             )
         except Exception as exc:  # noqa: BLE001 - 单张图片失败不影响其余图片
             failed += 1
@@ -1404,9 +1429,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_stem(
                 src_path.stem,
                 scale,
-                args.tile,
-                args.cache_mode,
-                args.alpha,
+                settings.tile,
+                settings.cache_mode,
+                settings.alpha,
                 weight_path,
             ),
             suffix=".png",

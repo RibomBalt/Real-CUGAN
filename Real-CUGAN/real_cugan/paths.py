@@ -56,6 +56,11 @@ def resolve_weight_path(
         return default_weight_path(scale, denoise or DEFAULT_DENOISE)
 
     path = Path(weight).expanduser()
+    if not path.is_file() and not path.is_absolute():
+        # 相对路径先按当前目录找，再退回项目根目录（方便从任意目录调用 CLI）
+        fallback = PROJECT_ROOT / path
+        if fallback.is_file():
+            path = fallback
     if not path.is_file():
         raise FileNotFoundError(f"找不到权重文件 {path}")
     weight_scale = scale_from_weight_name(path)

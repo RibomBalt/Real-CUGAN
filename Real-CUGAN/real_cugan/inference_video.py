@@ -22,7 +22,8 @@ import torch
 from moviepy import VideoFileClip
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 
-from .cli import add_model_args
+from .cli import add_config_arg, add_model_args, model_overrides, section_overrides
+from .config import ConfigError, load_settings
 from .paths import resolve_weight_path, scale_from_weight_name
 from .upcunet_v3 import RealWaifuUpScaler
 
@@ -191,46 +192,88 @@ def build_argparser() -> argparse.ArgumentParser:
         prog="real-cugan-video",
         description="Real-CUGAN 视频超分：按 --n-gpu 分配显卡，每卡 --nt 线程推理，输出带原音轨的 mp4",
     )
-    parser.add_argument("-i", "--input", required=True, help="输入视频路径")
-    parser.add_argument("-o", "--output", required=True, help="输出视频路径（mp4）")
-    add_model_args(parser)
+    add_config_arg(parser)
     parser.add_argument(
-        "--nt", type=int, default=2, help="每张卡上的推理线程数（默认 2）"
+        "-i", "--input", default=None, help="输入视频路径（默认取配置 video.input）"
     )
-    parser.add_argument("--n-gpu", type=int, default=1, help="使用的显卡数量（默认 1）")
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="输出视频路径，mp4（默认取配置 video.output）",
+    )
+    add_model_args(parser)
+    parser.add_argument("--nt", type=int, default=None, help="每张卡上的推理线程数")
+    parser.add_argument("--n-gpu", type=int, default=None, help="使用的显卡数量")
     parser.add_argument(
         "--p-sleep",
         type=float,
         nargs=2,
-        default=(0.005, 0.012),
+        default=None,
         metavar=("MIN", "MAX"),
-        help="多线程推理时每帧的随机休眠区间，防止线程抢占（默认 0.005 0.012）",
+        help="多线程推理时每帧的随机休眠区间，防止线程抢占",
     )
     parser.add_argument(
         "--decode-sleep",
         type=float,
-        default=0.002,
-        help="解帧后主线程休眠时间，避免解帧占满 CPU（默认 0.002）",
+        default=None,
+        help="解帧后主线程休眠时间，避免解帧占满 CPU",
     )
     parser.add_argument(
         "--encode-params",
         nargs="+",
-        default=["-crf", "21", "-preset", "medium"],
+        default=None,
         metavar="ARG",
-        help="传给 ffmpeg 的编码参数（默认 -crf 21 -preset medium）",
+        help="传给 ffmpeg 的编码参数，例如 -crf 21 -preset medium",
     )
     return parser
+
+
+def _cli_overrides(args: argparse.Namespace) -> dict:
+    overrides = model_overrides(args)
+    overrides.update(
+        section_overrides(
+            args,
+            "video",
+            (
+                "input",
+                "output",
+                "nt",
+                "n_gpu",
+                "p_sleep",
+                "decode_sleep",
+                "encode_params",
+            ),
+        )
+    )
+    return overrides
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_argparser().parse_args(argv)
 
     try:
-        weight_path = resolve_weight_path(args.weights, args.scale, args.denoise)
+        settings = load_settings(args.config, _cli_overrides(args))
+    except ConfigError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+    video = settings.video
+
+    try:
+        weight_path = resolve_weight_path(
+            settings.weights, settings.scale, settings.denoise
+        )
     except (FileNotFoundError, ValueError) as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 2
-    scale = scale_from_weight_name(weight_path) or args.scale
+    scale = scale_from_weight_name(weight_path) or settings.scale
+
+    if video.input is None or video.output is None:
+        print(
+            "错误：缺少输入或输出视频路径。用 -i/-o 指定，或写进 config/config.yml 的 video.input / video.output",
+            file=sys.stderr,
+        )
+        return 2
 
     if not torch.cuda.is_available():
         print(
@@ -240,37 +283,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
     available_gpus = torch.cuda.device_count()
-    if args.n_gpu > available_gpus:
+    if video.n_gpu > available_gpus:
         print(
-            f"错误：--n-gpu {args.n_gpu} 超过可用显卡数 {available_gpus}",
+            f"错误：n_gpu {video.n_gpu} 超过可用显卡数 {available_gpus}",
             file=sys.stderr,
         )
         return 2
 
-    inp_path = Path(args.input)
+    inp_path = Path(video.input)
     if not inp_path.is_file():
         print(f"错误：输入视频不存在：{inp_path}", file=sys.stderr)
         return 2
-    opt_path = Path(args.output)
+    opt_path = Path(video.output)
     opt_path.parent.mkdir(parents=True, exist_ok=True)
 
     print(
-        f"权重: {weight_path}\n倍率: {scale}x  半精度: {args.half}  tile: {args.tile}  "
-        f"cache_mode: {args.cache_mode}  alpha: {args.alpha:g}  "
-        f"nt: {args.nt}  n_gpu: {args.n_gpu}"
+        f"权重: {weight_path}\n倍率: {scale}x  半精度: {settings.half}  tile: {settings.tile}  "
+        f"cache_mode: {settings.cache_mode}  alpha: {settings.alpha:g}  "
+        f"nt: {video.nt}  n_gpu: {video.n_gpu}"
     )
     upscaler = VideoRealWaifuUpScaler(
-        args.nt,
-        args.n_gpu,
+        video.nt,
+        video.n_gpu,
         scale,
         weight_path,
-        args.half,
-        args.tile,
-        args.cache_mode,
-        args.alpha,
-        tuple(args.p_sleep),
-        args.decode_sleep,
-        list(args.encode_params),
+        settings.half,
+        settings.tile,
+        settings.cache_mode,
+        settings.alpha,
+        tuple(video.p_sleep),
+        video.decode_sleep,
+        list(video.encode_params),
     )
     try:
         upscaler(inp_path, opt_path)

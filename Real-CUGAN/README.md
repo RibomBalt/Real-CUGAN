@@ -118,9 +118,24 @@ uv run real-cugan-video --help
 `-c/--cache-mode` 显存/速度模式、`-a/--alpha` 处理强度、`--half/--no-half` 半精度、`-d/--device` 设备。
 权重默认从 `weights_v3/` 按倍率与降噪档位自动匹配，也可用 `-w/--weights` 直接指定。
 
+**配置方式**：默认参数在 `config/config.yml` 里，带注释说明；命令行参数只覆盖你显式给出的项。
+本机专用（不该进仓库）的值可以放到项目根目录 `.env`（模板见 `.env.example`，`.env` 已被 git 忽略），
+用 `REAL_CUGAN_` + 字段名大写、嵌套字段用双下划线覆盖，例如：
+
+```bash
+# .env 示例
+REAL_CUGAN_DEVICE=cuda:0
+REAL_CUGAN_TILE=0
+REAL_CUGAN_VIDEO__INPUT=D:\videos\input.mp4
+REAL_CUGAN_VIDEO__OUTPUT=D:\videos\output.mp4
+```
+
+优先级：`config/config.yml` < 环境变量 / `.env` < 命令行。用 `--config 其它.yml` 可临时换一份配置；
+配置项写错或越界会在启动时直接报错（Pydantic 校验）。
+
 代码结构：`real_cugan/upcunet_v3.py`（模型定义 + 图像推理 CLI）、
-`real_cugan/inference_video.py`（视频推理 CLI），两个入口函数均为 `main()`，由 `pyproject.toml` 的
-`[project.scripts]` 注册。
+`real_cugan/inference_video.py`（视频推理 CLI）、`real_cugan/config.py`（配置模型与加载），
+两个入口函数均为 `main()`，由 `pyproject.toml` 的 `[project.scripts]` 注册。
 
 ### 4. VapourSynth玩家
 移步[Readme](VapourSynth/README.md)

@@ -93,9 +93,17 @@ Flags map to the parameters documented below: `-s/--scale`, `-n/--denoise`, `-t/
 `-c/--cache-mode`, `-a/--alpha`, `--half/--no-half`, `-d/--device`. Weights are picked from
 `weights_v3/` by scale + denoise preset unless `-w/--weights` is given.
 
-Code layout: `real_cugan/upcunet_v3.py` (model + image CLI) and
-`real_cugan/inference_video.py` (video CLI); both expose a `main()` registered through
-`[project.scripts]` in `pyproject.toml`.
+**Configuration**: defaults live in `config/config.yml` (commented); CLI flags only override what
+you pass. Machine-specific values belong in `.env` at the project root (template: `.env.example`,
+ignored by git), using `REAL_CUGAN_` + upper-case field names and `__` for nested keys, e.g.
+`REAL_CUGAN_VIDEO__INPUT=D:\videos\input.mp4`.
+
+Precedence: `config/config.yml` < environment / `.env` < command line. `--config other.yml`
+switches to another file; invalid values fail fast via Pydantic validation.
+
+Code layout: `real_cugan/upcunet_v3.py` (model + image CLI),
+`real_cugan/inference_video.py` (video CLI) and `real_cugan/config.py` (settings model/loader);
+both commands expose a `main()` registered through `[project.scripts]` in `pyproject.toml`.
 
 ### 4. For VapourSynth users
 
